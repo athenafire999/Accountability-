@@ -706,6 +706,52 @@
       margin-top: 2px;
     }
 
+    /* Rest Day & Weekend Styles */
+    .rest-day-message {
+      text-align: center;
+      padding: 40px 20px;
+    }
+
+    .rest-emoji {
+      font-size: 4rem;
+      margin-bottom: 16px;
+    }
+
+    .rest-day-message h3 {
+      font-size: 1.5rem;
+      color: #667eea;
+      margin-bottom: 10px;
+      font-weight: 700;
+    }
+
+    .rest-day-message p {
+      color: #666;
+      font-size: 1rem;
+      margin-bottom: 8px;
+    }
+
+    .rest-subtext {
+      font-size: 0.9rem !important;
+      color: #888 !important;
+      font-style: italic;
+    }
+
+    .weekend-notice {
+      background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+      border: 2px solid #667eea30;
+      border-radius: 12px;
+      padding: 12px 16px;
+      margin-bottom: 16px;
+      text-align: center;
+      font-size: 0.9rem;
+      color: #667eea;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
     /* Desktop styles */
     @media (min-width: 768px) {
       body {
@@ -918,9 +964,31 @@
       return QUOTES[dayOfYear % QUOTES.length];
     }
 
-    // Get all habits (default + custom)
-    function getAllHabits() {
+    // Get all habits (default + custom) - filtered by day of week
+    function getAllHabits(date = new Date()) {
+      const dayOfWeek = date.getDay(); // 0 = Sunday, 6 = Saturday
+      
+      // Sunday - rest day, no habits
+      if (dayOfWeek === 0) {
+        return [];
+      }
+      
+      // Saturday - only exercise and eat healthy
+      if (dayOfWeek === 6) {
+        const saturdayHabits = DEFAULT_HABITS.filter(h => 
+          h.id === 'exercise' || h.id === 'eatHealthy'
+        );
+        return [...saturdayHabits, ...customHabits.filter(h => h.weekendOnly)];
+      }
+      
+      // Weekdays (Mon-Fri) - all habits
       return [...DEFAULT_HABITS, ...customHabits];
+    }
+    
+    // Get habits for a specific date (used for calendar/history)
+    function getHabitsForDate(dateKey) {
+      const date = new Date(dateKey);
+      return getAllHabits(date);
     }
 
     // Load data from localStorage
@@ -1096,9 +1164,15 @@
     // Get day progress
     function getDayProgress(dateKey) {
       const dayData = history[dateKey] || {};
-      const allHabits = getAllHabits();
-      const completed = allHabits.filter(h => dayData[h.id]).length;
-      return allHabits.length > 0 ? (completed / allHabits.length) * 100 : 0;
+      const habitsForDay = getHabitsForDate(dateKey);
+      
+      // Sunday has no habits - show as 100% (rest day complete)
+      if (habitsForDay.length === 0) {
+        return 100;
+      }
+      
+      const completed = habitsForDay.filter(h => dayData[h.id]).length;
+      return habitsForDay.length > 0 ? (completed / habitsForDay.length) * 100 : 0;
     }
 
     // Get progress level (0-5)
@@ -1113,9 +1187,6 @@
 
     // Calculate stats
     function getStats() {
-      const allHabits = getAllHabits();
-      const habitIds = allHabits.map(h => h.id);
-      
       // 30-day average
       let totalProgress = 0;
       for (let i = 0; i < 30; i++) {
@@ -1125,12 +1196,21 @@
       }
       const averageProgress = Math.round(totalProgress / 30);
       
-      // Current streak
+      // Current streak - check each day with its specific habits
       let streak = 0;
       for (let i = 0; i < 365; i++) {
         const date = subDays(new Date(), i);
         const dateKey = formatDate(startOfDay(date), 'yyyy-MM-dd');
         const dayData = history[dateKey] || {};
+        const habitsForDay = getHabitsForDate(dateKey);
+        
+        // Sunday is a rest day - counts as complete
+        if (habitsForDay.length === 0) {
+          streak++;
+          continue;
+        }
+        
+        const habitIds = habitsForDay.map(h => h.id);
         const completed = habitIds.filter(id => dayData[id]).length;
         
         if (completed === habitIds.length && habitIds.length > 0) {
@@ -1146,6 +1226,16 @@
       const sortedDates = Object.keys(history).sort();
       for (const dateKey of sortedDates) {
         const dayData = history[dateKey] || {};
+        const habitsForDay = getHabitsForDate(dateKey);
+        
+        // Sunday is a rest day - counts as complete
+        if (habitsForDay.length === 0) {
+          currentStreak++;
+          bestStreak = Math.max(bestStreak, currentStreak);
+          continue;
+        }
+        
+        const habitIds = habitsForDay.map(h => h.id);
         const completed = habitIds.filter(id => dayData[id]).length;
         
         if (completed === habitIds.length && habitIds.length > 0) {
@@ -1278,6 +1368,34 @@
     // Render habit list
     function renderHabitList() {
       const allHabits = getAllHabits();
+      const dayOfWeek = new Date().getDay();
+      
+      // Sunday - rest day message
+      if (dayOfWeek === 0) {
+        return `
+          <div class="habit-list">
+            <div class="habit-list-header">
+              <h2 class="habit-list-title">Rest Day</h2>
+            </div>
+            <div class="rest-day-message">
+              <div class="rest-emoji">😴</div>
+              <h3>It's Sunday!</h3>
+              <p>Take a break and recharge. No habits today.</p>
+              <p class="rest-subtext">You've earned it!</p>
+            </div>
+          </div>
+        `;
+      }
+      
+      // Saturday - weekend mode message
+      let weekendNotice = '';
+      if (dayOfWeek === 6) {
+        weekendNotice = `
+          <div class="weekend-notice">
+            <span>🏋️</span> Weekend Mode: Exercise & Eat Healthy only
+          </div>
+        `;
+      }
       
       const habitsHtml = allHabits.map(habit => {
         const isCompleted = habits[habit.id] || false;
@@ -1323,6 +1441,7 @@
               <span>+</span> Add
             </button>
           </div>
+          ${weekendNotice}
           ${renderAddForm()}
           <div class="habits-container">
             ${habitsHtml}
